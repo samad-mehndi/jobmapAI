@@ -69,17 +69,18 @@ export default function JobMap() {
         'circle-radius': [
           'interpolate', ['linear'],
           ['get', 'job_count'],
-          1, 8,
-          10, 20,
-          30, 36,
-          50, 50
+          1, 12,
+          2, 18,
+          3, 26,
+          5, 34,
+          10, 44
         ],
         'circle-color': [
           'interpolate', ['linear'],
           ['get', 'job_count'],
           1, '#3B82F6',
-          15, '#8B5CF6',
-          30, '#EC4899'
+          3, '#8B5CF6',
+          5, '#EC4899'
         ],
         'circle-opacity': 0.85,
         'circle-stroke-width': 2,
@@ -108,7 +109,7 @@ export default function JobMap() {
       if (props) {
         setSelectedCompany({
           ...props,
-          job_titles: JSON.parse(props.job_titles || '[]'),
+          jobs: JSON.parse(props.jobs || '[]'),
           top_skills: JSON.parse(props.top_skills || '[]')
         });
       }
