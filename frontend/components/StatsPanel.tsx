@@ -1,4 +1,9 @@
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+'use client';
+
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend
+} from 'recharts';
 
 const COLORS = ['#3B82F6', '#8B5CF6', '#EC4899', '#10B981', '#F59E0B'];
 
@@ -15,7 +20,6 @@ export default function StatsPanel({ stats }: Props) {
     <div className="p-4 text-white">
       <h2 className="text-lg font-semibold mb-4">DFW Tech Job Market</h2>
 
-      {/* Top companies */}
       <div className="mb-6">
         <div className="text-xs text-gray-400 mb-2">Top Hiring Companies</div>
         <ResponsiveContainer width="100%" height={160}>
@@ -28,7 +32,6 @@ export default function StatsPanel({ stats }: Props) {
         </ResponsiveContainer>
       </div>
 
-      {/* Top skills */}
       <div className="mb-6">
         <div className="text-xs text-gray-400 mb-2">Most In-Demand Skills</div>
         <ResponsiveContainer width="100%" height={160}>
@@ -41,10 +44,9 @@ export default function StatsPanel({ stats }: Props) {
         </ResponsiveContainer>
       </div>
 
-      {/* Remote breakdown */}
       <div className="mb-6">
         <div className="text-xs text-gray-400 mb-2">Remote vs Onsite vs Hybrid</div>
-        <ResponsiveContainer width="100%" height={120}>
+        <ResponsiveContainer width="100%" height={140}>
           <PieChart>
             <Pie
               data={stats.remote_breakdown}
@@ -52,21 +54,22 @@ export default function StatsPanel({ stats }: Props) {
               nameKey="remote_type"
               cx="50%"
               cy="50%"
-              outerRadius={50}
-              label={({ remote_type, percent }) =>
-                `${remote_type} ${(percent * 100).toFixed(0)}%`
-              }
+              outerRadius={45}
             >
               {stats.remote_breakdown.map((_: any, i: number) => (
                 <Cell key={i} fill={COLORS[i % COLORS.length]} />
               ))}
             </Pie>
+            <Legend
+              formatter={(value) => (
+                <span style={{ color: '#9CA3AF', fontSize: 11 }}>{value}</span>
+              )}
+            />
             <Tooltip contentStyle={{ background: '#1F2937', border: 'none', color: '#fff' }} />
           </PieChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Seniority */}
       <div>
         <div className="text-xs text-gray-400 mb-2">Seniority Breakdown</div>
         <div className="space-y-2">

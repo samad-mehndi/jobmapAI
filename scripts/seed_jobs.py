@@ -17,6 +17,16 @@ SEARCH_QUERIES = [
     "Backend Engineer in Dallas TX",
     "AI Engineer in Dallas TX",
     "Data Engineer in Irving TX",
+    "Frontend Engineer in Dallas TX",
+    "DevOps Engineer in Dallas TX",
+    "Machine Learning Engineer in Dallas TX",
+    "Python Developer in Dallas TX",
+    "React Developer in Plano TX",
+    "Java Developer in Dallas TX",
+    "Cloud Engineer in Dallas TX",
+    "Software Engineer in Frisco TX",
+    "Engineering Manager in Dallas TX",
+    "Product Engineer in Dallas TX",
 ]
 
 def geocode_nominatim(company: str, city: str, state: str) -> tuple:
