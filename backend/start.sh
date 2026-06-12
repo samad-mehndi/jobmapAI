@@ -1,2 +1,3 @@
 #!/bin/bash
-python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+echo "Starting on port: $PORT"
+python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
