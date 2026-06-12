@@ -22,6 +22,7 @@ export default function JobMap() {
   const [matchedJobIds, setMatchedJobIds] = useState<Set<number>>(new Set());
   const [resumeData, setResumeData] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
+  const [isSemanticSearch, setIsSemanticSearch] = useState(false);
 
   useEffect(() => {
     fetch(`${API}/jobs/stats`).then(r => r.json()).then(setStats);
@@ -35,13 +36,22 @@ export default function JobMap() {
       center: [-96.7297, 32.9483],
       zoom: 10
     });
-    map.current.on('load', () => { loadJobs(); });
+    map.current.on('load', () => { loadJobs('', false); });
   }, []);
 
-  const loadJobs = async (roleFilter = '') => {
-    const url = `${API}/jobs/map?lat=32.9483&lng=-96.7297&radius_miles=40${roleFilter ? `&role=${roleFilter}` : ''}`;
+  const loadJobs = async (roleFilter = '', semantic = false) => {
+    let url: string;
+
+    if (semantic && roleFilter) {
+      url = `${API}/jobs/search?q=${encodeURIComponent(roleFilter)}&lat=32.9483&lng=-96.7297&radius_miles=40`;
+    } else {
+      url = `${API}/jobs/map?lat=32.9483&lng=-96.7297&radius_miles=40${roleFilter ? `&role=${roleFilter}` : ''}`;
+    }
+
     const data = await fetch(url).then(r => r.json());
     setJobCount(data.total);
+    setIsSemanticSearch(semantic && !!roleFilter);
+
     if (!map.current) return;
 
     if (map.current.getSource('jobs')) {
@@ -61,10 +71,12 @@ export default function JobMap() {
           'interpolate', ['linear'], ['get', 'job_count'],
           1, 12, 2, 18, 3, 26, 5, 34, 10, 44
         ],
-        'circle-color': [
-          'interpolate', ['linear'], ['get', 'job_count'],
-          1, '#3B82F6', 3, '#8B5CF6', 5, '#EC4899'
-        ],
+        'circle-color': semantic && roleFilter
+          ? '#F59E0B'
+          : [
+              'interpolate', ['linear'], ['get', 'job_count'],
+              1, '#3B82F6', 3, '#8B5CF6', 5, '#EC4899'
+            ],
         'circle-opacity': 0.85,
         'circle-stroke-width': 2,
         'circle-stroke-color': '#ffffff'
@@ -108,7 +120,6 @@ export default function JobMap() {
     const ids = new Set<number>(matches.map((m: any) => m.job_id));
     setMatchedJobIds(ids);
 
-    // Add match layer on top
     if (map.current.getLayer('matched-circles')) {
       map.current.removeLayer('matched-circles');
       map.current.removeLayer('matched-labels');
@@ -179,7 +190,7 @@ export default function JobMap() {
           avg_salary_min: props.salary_min,
           match_score: props.match_score,
           top_skills: JSON.parse(props.matched_skills || '[]'),
-          jobs: [JSON.parse(JSON.stringify({
+          jobs: [{
             title: props.title,
             url: props.source_url,
             seniority: props.seniority,
@@ -188,7 +199,7 @@ export default function JobMap() {
             match_score: props.match_score,
             matched_skills: JSON.parse(props.matched_skills || '[]'),
             missing_skills: JSON.parse(props.missing_skills || '[]')
-          }))]
+          }]
         });
       }
     });
@@ -228,7 +239,11 @@ export default function JobMap() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    loadJobs(role);
+    if (!role.trim()) {
+      loadJobs('', false);
+      return;
+    }
+    loadJobs(role, true);
   };
 
   const clearResume = () => {
@@ -245,22 +260,36 @@ export default function JobMap() {
   return (
     <div className="flex h-screen w-screen bg-gray-950">
       <div className="flex-1 relative">
+
         {/* Search bar */}
         <div className="absolute top-4 left-4 z-10 flex gap-2">
           <form onSubmit={handleSearch} className="flex gap-2">
-            <input
-              type="text"
-              value={role}
-              onChange={e => setRole(e.target.value)}
-              placeholder="Search role... e.g. AI Engineer"
-              className="w-72 px-4 py-2 rounded-lg bg-gray-900 text-white border border-gray-700 text-sm focus:outline-none focus:border-blue-500"
-            />
-            <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+            <div className="relative">
+              <input
+                type="text"
+                value={role}
+                onChange={e => setRole(e.target.value)}
+                placeholder="Search in plain English... e.g. machine learning jobs"
+                className="w-80 px-4 py-2 rounded-lg bg-gray-900 text-white border border-gray-700 text-sm focus:outline-none focus:border-blue-500"
+              />
+              {isSemanticSearch && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-amber-400 font-medium">
+                  AI
+                </span>
+              )}
+            </div>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
+            >
               Search
             </button>
             {role && (
-              <button type="button" onClick={() => { setRole(''); loadJobs(''); }}
-                className="px-4 py-2 bg-gray-700 text-white rounded-lg text-sm hover:bg-gray-600">
+              <button
+                type="button"
+                onClick={() => { setRole(''); setIsSemanticSearch(false); loadJobs('', false); }}
+                className="px-4 py-2 bg-gray-700 text-white rounded-lg text-sm hover:bg-gray-600"
+              >
                 Clear
               </button>
             )}
@@ -269,6 +298,11 @@ export default function JobMap() {
 
         {/* Top right badges */}
         <div className="absolute top-4 right-4 z-10 flex gap-2 items-center">
+          {isSemanticSearch && (
+            <div className="bg-amber-900 text-amber-300 px-3 py-1 rounded-full text-sm border border-amber-700">
+              AI semantic search
+            </div>
+          )}
           {resumeData && (
             <div className="bg-green-900 text-green-300 px-3 py-1 rounded-full text-sm border border-green-700">
               {resumeData.matches.length} matches found
