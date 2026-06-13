@@ -162,6 +162,7 @@ Description: {(description or '')[:2000]}"""
             conn.commit()
             processed += 1
         except Exception:
+            print(f"Failed job {job_id}: {e}")
             failed += 1
             continue
 
