@@ -60,12 +60,7 @@ def seed_jobs(x_admin_secret: str = Header(...)):
                     "X-RapidAPI-Key": JSEARCH_KEY,
                     "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
                 },
-                params={
-                    "query": query,
-                    "page": "1",
-                    "num_pages": "1",
-                    "date_posted": "month"
-                },
+                params={"query": query, "page": "1", "num_pages": "1", "date_posted": "month"},
                 timeout=15
             )
             jobs = r.json().get("data", [])
@@ -81,11 +76,11 @@ def seed_jobs(x_admin_secret: str = Header(...)):
 
             with conn.cursor() as cur:
                 cur.execute("""
-                    INSERT INTO companies (name, address, location)
-                    VALUES (%s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography)
-                    ON CONFLICT (name) DO UPDATE SET location = EXCLUDED.location
+                    INSERT INTO companies (name, address, lat, lng)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (name) DO UPDATE SET lat = EXCLUDED.lat, lng = EXCLUDED.lng
                     RETURNING id
-                """, (company_name, f"{company_name}, {city}, {state_code}", lng, lat))
+                """, (company_name, f"{company_name}, {city}, {state_code}", lat, lng))
                 row = cur.fetchone()
                 if not row:
                     cur.execute("SELECT id FROM companies WHERE name = %s", (company_name,))
@@ -93,19 +88,15 @@ def seed_jobs(x_admin_secret: str = Header(...)):
                 company_id = row[0] if row else None
 
                 cur.execute("""
-                    INSERT INTO jobs
-                        (company_id, title, description, salary_min, salary_max,
-                         remote_type, source_url, source, posted_date)
+                    INSERT INTO jobs (company_id, title, description, salary_min, salary_max,
+                        remote_type, source_url, source, posted_date)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
                 """, (
-                    company_id,
-                    job.get("job_title"),
+                    company_id, job.get("job_title"),
                     (job.get("job_description") or "")[:5000],
-                    job.get("job_min_salary"),
-                    job.get("job_max_salary"),
+                    job.get("job_min_salary"), job.get("job_max_salary"),
                     "remote" if job.get("job_is_remote") else "onsite",
-                    job.get("job_apply_link"),
-                    "jsearch"
+                    job.get("job_apply_link"), "jsearch"
                 ))
             conn.commit()
             total += 1
@@ -116,7 +107,6 @@ def seed_jobs(x_admin_secret: str = Header(...)):
 
 @router.post("/admin/parse-embeddings")
 def parse_embeddings(x_admin_secret: str = Header(...)):
-    """Generate embeddings for all jobs that don't have one yet"""
     import json
     from langchain_openai import ChatOpenAI, OpenAIEmbeddings
     from langchain_core.messages import HumanMessage
@@ -128,8 +118,6 @@ def parse_embeddings(x_admin_secret: str = Header(...)):
     emb_model = OpenAIEmbeddings(model="text-embedding-3-small")
 
     conn = psycopg2.connect(DB_URL)
-    from pgvector.psycopg2 import register_vector
-    register_vector(conn)
 
     with conn.cursor() as cur:
         cur.execute("""
@@ -155,8 +143,6 @@ Description: {(description or '')[:2000]}"""
                     raw = raw[4:]
             parsed = json.loads(raw.strip())
             skills = parsed.get("skills", [])
-            seniority = parsed.get("seniority")
-            remote_type = parsed.get("remote_type")
 
             text = f"{title} {' '.join(skills)} {(description or '')[:500]}"
             embedding = emb_model.embed_query(text)
@@ -165,7 +151,7 @@ Description: {(description or '')[:2000]}"""
                 cur.execute("""
                     UPDATE jobs SET embedding = %s, seniority = %s, remote_type = %s
                     WHERE id = %s
-                """, (embedding, seniority, remote_type, job_id))
+                """, (embedding, parsed.get("seniority"), parsed.get("remote_type"), job_id))
                 for skill in skills:
                     cur.execute("INSERT INTO skills (name) VALUES (%s) ON CONFLICT (name) DO NOTHING", (skill.lower(),))
                     cur.execute("SELECT id FROM skills WHERE name = %s", (skill.lower(),))
@@ -175,7 +161,7 @@ Description: {(description or '')[:2000]}"""
                             (job_id, skill_row[0]))
             conn.commit()
             processed += 1
-        except Exception as e:
+        except Exception:
             failed += 1
             continue
 

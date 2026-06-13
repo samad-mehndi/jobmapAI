@@ -81,20 +81,16 @@ def fetch_relevant_jobs(state: ResumeMatcherState) -> ResumeMatcherState:
             query = f"{role} in Dallas TX"
             print(f"  Fetching jobs for: {query}")
 
-            url = "https://jsearch.p.rapidapi.com/search"
-            headers = {
-                "X-RapidAPI-Key": JSEARCH_KEY,
-                "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
-            }
-            params = {
-                "query": query,
-                "page": "1",
-                "num_pages": "1",
-                "date_posted": "month"
-            }
-
             try:
-                r = httpx.get(url, headers=headers, params=params, timeout=15)
+                r = httpx.get(
+                    "https://jsearch.p.rapidapi.com/search",
+                    headers={
+                        "X-RapidAPI-Key": JSEARCH_KEY,
+                        "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
+                    },
+                    params={"query": query, "page": "1", "num_pages": "1", "date_posted": "month"},
+                    timeout=15
+                )
                 jobs = r.json().get("data", [])
             except Exception:
                 jobs = []
@@ -104,25 +100,16 @@ def fetch_relevant_jobs(state: ResumeMatcherState) -> ResumeMatcherState:
                 city = job.get("job_city") or "Dallas"
                 state_code = job.get("job_state") or "TX"
 
-                # Geocode
                 time.sleep(1)
                 lat, lng = geocode(company_name, city, state_code)
 
                 with conn.cursor() as cur:
-                    if lat and lng:
-                        cur.execute("""
-                            INSERT INTO companies (name, address, location)
-                            VALUES (%s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography)
-                            ON CONFLICT (name) DO UPDATE SET location = EXCLUDED.location
-                            RETURNING id
-                        """, (company_name, f"{company_name}, {city}, {state_code}", lng, lat))
-                    else:
-                        cur.execute("""
-                            INSERT INTO companies (name, address)
-                            VALUES (%s, %s)
-                            ON CONFLICT (name) DO NOTHING
-                            RETURNING id
-                        """, (company_name, f"{city}, {state_code}"))
+                    cur.execute("""
+                        INSERT INTO companies (name, address, lat, lng)
+                        VALUES (%s, %s, %s, %s)
+                        ON CONFLICT (name) DO UPDATE SET lat = EXCLUDED.lat, lng = EXCLUDED.lng
+                        RETURNING id
+                    """, (company_name, f"{company_name}, {city}, {state_code}", lat, lng))
 
                     row = cur.fetchone()
                     if not row:
@@ -185,7 +172,8 @@ def geocode(company: str, city: str, state_code: str) -> tuple:
             return float(results[0]["lat"]), float(results[0]["lon"])
     except Exception:
         pass
-    return None, None
+    # Default to Dallas city center
+    return 32.7767, -96.7970
 
 # ── Build graph ────────────────────────────────────────────────
 def build_resume_matcher_graph():

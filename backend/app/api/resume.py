@@ -18,6 +18,7 @@ DB_URL = os.getenv("DATABASE_URL")
 embeddings_model = OpenAIEmbeddings(model="text-embedding-3-small")
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
+
 def parse_new_job_embeddings(job_ids: list[int]):
     """Generate embeddings for newly fetched jobs in background"""
     if not job_ids:
@@ -34,7 +35,6 @@ def parse_new_job_embeddings(job_ids: list[int]):
 
         for job_id, title, description in jobs:
             try:
-                # Extract skills
                 prompt = f"""Extract skills from this job. Return ONLY JSON:
 {{"skills": ["skill1", ...], "seniority": "entry/mid/senior/lead", "remote_type": "remote/hybrid/onsite"}}
 Title: {title}
@@ -50,7 +50,6 @@ Description: {(description or '')[:2000]}"""
                 seniority = parsed.get("seniority")
                 remote_type = parsed.get("remote_type")
 
-                # Generate embedding
                 text = f"{title} {' '.join(skills)} {(description or '')[:500]}"
                 embedding = embeddings_model.embed_query(text)
 
@@ -59,20 +58,13 @@ Description: {(description or '')[:2000]}"""
                         UPDATE jobs SET embedding = %s, seniority = %s, remote_type = %s
                         WHERE id = %s
                     """, (embedding, seniority, remote_type, job_id))
-
                     for skill in skills:
-                        cur.execute("""
-                            INSERT INTO skills (name) VALUES (%s)
-                            ON CONFLICT (name) DO NOTHING
-                        """, (skill.lower(),))
+                        cur.execute("INSERT INTO skills (name) VALUES (%s) ON CONFLICT (name) DO NOTHING", (skill.lower(),))
                         cur.execute("SELECT id FROM skills WHERE name = %s", (skill.lower(),))
                         skill_row = cur.fetchone()
                         if skill_row:
-                            cur.execute("""
-                                INSERT INTO job_skills (job_id, skill_id)
-                                VALUES (%s, %s) ON CONFLICT DO NOTHING
-                            """, (job_id, skill_row[0]))
-
+                            cur.execute("INSERT INTO job_skills (job_id, skill_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                                (job_id, skill_row[0]))
                 conn.commit()
             except Exception as e:
                 print(f"Error processing job {job_id}: {e}")
@@ -89,7 +81,6 @@ async def match_resume(
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
 
-    # Extract text from PDF
     contents = await file.read()
     try:
         pdf = fitz.open(stream=contents, filetype="pdf")
@@ -103,7 +94,6 @@ async def match_resume(
     if len(resume_text.strip()) < 50:
         raise HTTPException(status_code=400, detail="PDF appears empty or unreadable")
 
-    # Run resume matcher agent
     result = process_resume(resume_text)
 
     if result.get("error"):
@@ -115,11 +105,9 @@ async def match_resume(
     resume_embedding = result["resume_embedding"]
     new_job_ids = result.get("fetched_job_ids", [])
 
-    # Process new jobs in background
     if new_job_ids:
         background_tasks.add_task(parse_new_job_embeddings, new_job_ids)
 
-    # Match against ALL jobs with embeddings
     conn = psycopg2.connect(DB_URL)
     register_vector(conn)
 
@@ -130,8 +118,7 @@ async def match_resume(
                     j.id, j.title, j.seniority, j.remote_type,
                     j.salary_min, j.salary_max, j.source_url,
                     c.name AS company_name,
-                    ST_X(c.location::geometry) AS lng,
-                    ST_Y(c.location::geometry) AS lat,
+                    c.lng, c.lat,
                     j.embedding,
                     ARRAY_AGG(s.name) FILTER (WHERE s.name IS NOT NULL) AS job_skills
                 FROM jobs j
@@ -139,8 +126,8 @@ async def match_resume(
                 LEFT JOIN job_skills js ON js.job_id = j.id
                 LEFT JOIN skills s ON s.id = js.skill_id
                 WHERE j.embedding IS NOT NULL
-                AND c.location IS NOT NULL
-                GROUP BY j.id, c.name, c.location
+                AND c.lat IS NOT NULL
+                GROUP BY j.id, c.name, c.lat, c.lng
             """)
             jobs = cur.fetchall()
 
