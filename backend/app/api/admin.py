@@ -129,12 +129,22 @@ def parse_embeddings(x_admin_secret: str = Header(...)):
     processed = 0
     failed = 0
 
+    valid_seniority = ["entry", "mid", "senior", "lead"]
+    valid_remote = ["remote", "hybrid", "onsite"]
+
     for job_id, title, description in jobs:
         try:
-            prompt = f"""Extract skills from this job. Return ONLY JSON:
-{{"skills": ["skill1", ...], "seniority": "entry/mid/senior/lead", "remote_type": "remote/hybrid/onsite"}}
+            prompt = f"""Extract skills from this job. Return ONLY valid JSON:
+{{"skills": ["skill1", "skill2"], "seniority": "entry", "remote_type": "hybrid"}}
+
+Rules:
+- seniority must be exactly one of: entry, mid, senior, lead
+- remote_type must be exactly one of: remote, hybrid, onsite
+- Return ONLY the JSON object, no explanation
+
 Title: {title}
 Description: {(description or '')[:2000]}"""
+
             response = llm.invoke([HumanMessage(content=prompt)])
             raw = response.content.strip()
             if raw.startswith("```"):
@@ -144,6 +154,14 @@ Description: {(description or '')[:2000]}"""
             parsed = json.loads(raw.strip())
             skills = parsed.get("skills", [])
 
+            # Sanitize seniority
+            raw_seniority = parsed.get("seniority", "")
+            seniority = raw_seniority if raw_seniority in valid_seniority else None
+
+            # Sanitize remote_type
+            raw_remote = parsed.get("remote_type", "")
+            remote_type = raw_remote if raw_remote in valid_remote else "onsite"
+
             text = f"{title} {' '.join(skills)} {(description or '')[:500]}"
             embedding = emb_model.embed_query(text)
 
@@ -151,18 +169,25 @@ Description: {(description or '')[:2000]}"""
                 cur.execute("""
                     UPDATE jobs SET embedding = %s, seniority = %s, remote_type = %s
                     WHERE id = %s
-                """, (embedding, parsed.get("seniority"), parsed.get("remote_type"), job_id))
+                """, (embedding, seniority, remote_type, job_id))
                 for skill in skills:
-                    cur.execute("INSERT INTO skills (name) VALUES (%s) ON CONFLICT (name) DO NOTHING", (skill.lower(),))
+                    cur.execute(
+                        "INSERT INTO skills (name) VALUES (%s) ON CONFLICT (name) DO NOTHING",
+                        (skill.lower(),)
+                    )
                     cur.execute("SELECT id FROM skills WHERE name = %s", (skill.lower(),))
                     skill_row = cur.fetchone()
                     if skill_row:
-                        cur.execute("INSERT INTO job_skills (job_id, skill_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-                            (job_id, skill_row[0]))
+                        cur.execute(
+                            "INSERT INTO job_skills (job_id, skill_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                            (job_id, skill_row[0])
+                        )
             conn.commit()
             processed += 1
-        except Exception:
-            print(f"Failed job {job_id}: {e}")
+
+        except Exception as err:
+            conn.rollback()
+            print(f"Failed job {job_id}: {err}")
             failed += 1
             continue
 
